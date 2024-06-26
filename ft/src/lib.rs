@@ -15,6 +15,7 @@ NOTES:
   - To prevent the deployed contract from being modified or deleted, it should not have any access
     keys on its account.
 */
+use near_contract_standards::fungible_token::events::FtBurn;
 use near_contract_standards::fungible_token::metadata::{
     FungibleTokenMetadata, FungibleTokenMetadataProvider, FT_METADATA_SPEC,
 };
@@ -22,7 +23,7 @@ use near_contract_standards::fungible_token::FungibleToken;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LazyOption;
 use near_sdk::json_types::U128;
-use near_sdk::{env, log, near_bindgen, AccountId, Balance, PanicOnDefault, PromiseOrValue};
+use near_sdk::{env, log, near_bindgen, AccountId, Balance, PanicOnDefault, PromiseOrValue, require};
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -32,6 +33,9 @@ pub struct Contract {
 }
 
 const DATA_IMAGE_SVG_NEAR_ICON: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 288 288'%3E%3Cg id='l' data-name='l'%3E%3Cpath d='M187.58,79.81l-30.1,44.69a3.2,3.2,0,0,0,4.75,4.2L191.86,103a1.2,1.2,0,0,1,2,.91v80.46a1.2,1.2,0,0,1-2.12.77L102.18,77.93A15.35,15.35,0,0,0,90.47,72.5H87.34A15.34,15.34,0,0,0,72,87.84V201.16A15.34,15.34,0,0,0,87.34,216.5h0a15.35,15.35,0,0,0,13.08-7.31l30.1-44.69a3.2,3.2,0,0,0-4.75-4.2L96.14,186a1.2,1.2,0,0,1-2-.91V104.61a1.2,1.2,0,0,1,2.12-.77l89.55,107.23a15.35,15.35,0,0,0,11.71,5.43h3.13A15.34,15.34,0,0,0,216,201.16V87.84A15.34,15.34,0,0,0,200.66,72.5h0A15.35,15.35,0,0,0,187.58,79.81Z'/%3E%3C/g%3E%3C/svg%3E";
+const BND_SVG_ICON: &str = "data:image/svg+xml,<%3Fxml version='1.0' encoding='utf-8'%3F><svg fill='%23000000' width='800px' height='800px' viewBox='0 0 24 24' id='up-trend' data-name='Line Color' xmlns='http://www.w3.org/2000/svg' class='icon line-color'><polyline id='primary' points='21 6 14 13 11 10 3 18' style='fill: none; stroke: rgb(0, 0, 0); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2;'></polyline><polyline id='secondary' points='21 10 21 6 17 6' style='fill: none; stroke: rgb(102,202,60); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2;'></polyline></svg>";
+const SHR_SVG_ICON: &str = "data:image/svg+xml,<%3Fxml version='1.0' encoding='utf-8'%3F><svg fill='%23000000' width='800px' height='800px' viewBox='0 0 24 24' id='up-trend' data-name='Line Color' xmlns='http://www.w3.org/2000/svg' class='icon line-color'><polyline id='primary' points='21 6 14 13 11 10 3 18' style='fill: none; stroke: rgb(0, 0, 0); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2;'></polyline><polyline id='secondary' points='21 10 21 6 17 6' style='fill: none; stroke: rgb(218,84,220); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2;'></polyline></svg>";
+const ERR_TOTAL_SUPPLY_OVERFLOW: &str = "Total supply overflow";
 
 #[near_bindgen]
 impl Contract {
@@ -54,14 +58,60 @@ impl Contract {
         )
     }
 
+    pub fn set_icon_bnd(&mut self) {
+        let predecessor = env::predecessor_account_id();
+        require!(predecessor == "finby.near".parse().unwrap(), "Unauthorized");
+        let mut metadata = self.metadata.get().expect("Metadata not set");
+        metadata.icon = Some(BND_SVG_ICON.to_string());
+        self.metadata.set(&metadata);
+    }
+
+    pub fn set_icon_shr(&mut self) {
+        let predecessor = env::predecessor_account_id();
+        require!(predecessor == "finby.near".parse().unwrap(), "Unauthorized");
+        let mut metadata = self.metadata.get().expect("Metadata not set");
+        metadata.icon = Some(SHR_SVG_ICON.to_string());
+        self.metadata.set(&metadata);
+    }
+
+    #[init]
+    pub fn new_meta_bnd(owner_id: AccountId, total_supply: U128) -> Self {
+        Self::new(
+            owner_id,
+            total_supply,
+            FungibleTokenMetadata {
+                spec: FT_METADATA_SPEC.to_string(),
+                name: "Finby BND".to_string(),
+                symbol: "BND".to_string(),
+                icon: Some(BND_SVG_ICON.to_string()),
+                reference: None,
+                reference_hash: None,
+                decimals: 0,
+            },
+        )
+    }
+
+    #[init]
+    pub fn new_meta_shr(owner_id: AccountId, total_supply: U128) -> Self {
+        Self::new(
+            owner_id,
+            total_supply,
+            FungibleTokenMetadata {
+                spec: FT_METADATA_SPEC.to_string(),
+                name: "Finby SHR".to_string(),
+                symbol: "SHR".to_string(),
+                icon: Some(SHR_SVG_ICON.to_string()),
+                reference: None,
+                reference_hash: None,
+                decimals: 0,
+            },
+        )
+    }
+
     /// Initializes the contract with the given total supply owned by the given `owner_id` with
     /// the given fungible token metadata.
     #[init]
-    pub fn new(
-        owner_id: AccountId,
-        total_supply: U128,
-        metadata: FungibleTokenMetadata,
-    ) -> Self {
+    pub fn new(owner_id: AccountId, total_supply: U128, metadata: FungibleTokenMetadata) -> Self {
         assert!(!env::state_exists(), "Already initialized");
         metadata.assert_valid();
         let mut this = Self {
@@ -86,6 +136,19 @@ impl Contract {
     fn on_tokens_burned(&mut self, account_id: AccountId, amount: Balance) {
         log!("Account @{} burned {}", account_id, amount);
     }
+
+    pub fn ft_burn(&mut self, amount: U128) {
+        let amount: Balance = amount.into();
+        let account_id = env::predecessor_account_id();
+        self.token.internal_withdraw(&account_id, amount);
+        self.token.total_supply = self
+            .token
+            .total_supply
+            .checked_sub(amount)
+            .unwrap_or_else(|| env::panic_str(ERR_TOTAL_SUPPLY_OVERFLOW));
+        FtBurn { owner_id: &account_id, amount: &U128(amount), memo: Some("burn") }.emit();
+        self.on_tokens_burned(account_id, amount);
+    }
 }
 
 near_contract_standards::impl_fungible_token_core!(Contract, token, on_tokens_burned);
@@ -101,7 +164,6 @@ impl FungibleTokenMetadataProvider for Contract {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use near_sdk::test_utils::{accounts, VMContextBuilder};
-    use near_sdk::MockedBlockchain;
     use near_sdk::{testing_env, Balance};
 
     use super::*;
@@ -121,7 +183,7 @@ mod tests {
     fn test_new() {
         let mut context = get_context(accounts(1));
         testing_env!(context.build());
-        let contract = Contract::new_default_meta(accounts(1).into(), TOTAL_SUPPLY.into());
+        let contract = Contract::new_default_meta(accounts(1), TOTAL_SUPPLY.into());
         testing_env!(context.is_view(true).build());
         assert_eq!(contract.ft_total_supply().0, TOTAL_SUPPLY);
         assert_eq!(contract.ft_balance_of(accounts(1)).0, TOTAL_SUPPLY);
@@ -139,7 +201,7 @@ mod tests {
     fn test_transfer() {
         let mut context = get_context(accounts(2));
         testing_env!(context.build());
-        let mut contract = Contract::new_default_meta(accounts(2).into(), TOTAL_SUPPLY.into());
+        let mut contract = Contract::new_default_meta(accounts(2), TOTAL_SUPPLY.into());
         testing_env!(context
             .storage_usage(env::storage_usage())
             .attached_deposit(contract.storage_balance_bounds().min.into())
@@ -164,5 +226,56 @@ mod tests {
             .build());
         assert_eq!(contract.ft_balance_of(accounts(2)).0, (TOTAL_SUPPLY - transfer_amount));
         assert_eq!(contract.ft_balance_of(accounts(1)).0, transfer_amount);
+    }
+
+    #[test]
+    fn test_burn() {
+        let mut context = get_context(accounts(2));
+        testing_env!(context.build());
+        let mut contract = Contract::new_default_meta(accounts(2), TOTAL_SUPPLY.into());
+        testing_env!(context
+            .storage_usage(env::storage_usage())
+            .attached_deposit(contract.storage_balance_bounds().min.into())
+            .predecessor_account_id(accounts(1))
+            .build());
+        // Paying for account registration, aka storage deposit
+        contract.storage_deposit(None, None);
+
+        testing_env!(context
+            .storage_usage(env::storage_usage())
+            .attached_deposit(1)
+            .predecessor_account_id(accounts(2))
+            .build());
+
+        assert_eq!(contract.ft_balance_of(accounts(2)).0, TOTAL_SUPPLY);
+        let burn_amount = TOTAL_SUPPLY / 3;
+        contract.ft_burn(burn_amount.into());
+        assert_eq!(contract.ft_balance_of(accounts(2)).0, TOTAL_SUPPLY - burn_amount);
+
+        let transfer_amount = TOTAL_SUPPLY / 3;
+        contract.ft_transfer(accounts(1), transfer_amount.into(), None);
+        testing_env!(context
+            .storage_usage(env::storage_usage())
+            .account_balance(env::account_balance())
+            .attached_deposit(1)
+            .build());
+        assert_eq!(
+            contract.ft_balance_of(accounts(2)).0,
+            (TOTAL_SUPPLY - burn_amount - transfer_amount)
+        );
+        assert_eq!(contract.ft_balance_of(accounts(1)).0, transfer_amount);
+
+        testing_env!(context
+            .storage_usage(env::storage_usage())
+            .attached_deposit(contract.storage_balance_bounds().min.into())
+            .predecessor_account_id(accounts(1))
+            .build());
+        let burn_amount_1 = transfer_amount / 3;
+        contract.ft_burn(burn_amount_1.into());
+        assert_eq!(
+            contract.ft_balance_of(accounts(2)).0,
+            (TOTAL_SUPPLY - burn_amount - transfer_amount)
+        );
+        assert_eq!(contract.ft_balance_of(accounts(1)).0, transfer_amount - burn_amount_1);
     }
 }
